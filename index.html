@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Link Builder</title>
+<style>html{color-scheme:light}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* One column, four steps: template, company list, check IDs, links. Same look as the other sourcing tools. */
+:root{
+  --bg:#f2f4f3;--surface:#ffffff;--ink:#15201d;--muted:#5a6a65;--line:#dde3e0;--soft:#e8ecea;
+  --accent:#3a41c6;--accent-ink:#ffffff;
+  --ok:#17713f;--ok-bg:#e3f3ea;--bad:#a3441a;--bad-bg:#fbe9e0;--warn:#7a5a00;--warn-bg:#fdf3d8;
+  --font-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1514;--surface:#172120;--ink:#e7efec;--muted:#92a39d;--line:#2a3836;--soft:#1e2b29;
+  --accent:#9aa0ff;--accent-ink:#0f1514;--ok:#5fd196;--ok-bg:#12301f;--bad:#f0996b;--bad-bg:#3a1e12;--warn:#e8c55f;--warn-bg:#3a2f0d;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1514;--surface:#172120;--ink:#e7efec;--muted:#92a39d;--line:#2a3836;--soft:#1e2b29;
+  --accent:#9aa0ff;--accent-ink:#0f1514;--ok:#5fd196;--ok-bg:#12301f;--bad:#f0996b;--bad-bg:#3a1e12;--warn:#e8c55f;--warn-bg:#3a2f0d;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5;padding-block:36px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,5vw,34px);line-height:1.1;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h2{font-family:var(--font-display);font-size:19px;margin:0;letter-spacing:-.01em}
+.lede{margin:8px 0 0;color:var(--muted);max-width:62ch}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+.small{font-size:13px}.muted{color:var(--muted)}
+button{font:inherit;font-weight:500;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 13px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.primary:hover:not(:disabled){filter:brightness(1.08);border-color:var(--accent)}
+button:disabled{opacity:.55;cursor:default}
+button.link{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+button.danger{color:var(--bad)}
+button.danger.arm{background:var(--bad-bg);border-color:var(--bad)}
+a.btn{display:inline-block;text-decoration:none;font-weight:500;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 13px}
+a.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:focus-visible,a:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+select,input[type=text],input[type=search],input[type=number],textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;max-width:100%}
+textarea{width:100%;resize:vertical;font-family:var(--font-mono);font-size:12.5px}
+.row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;min-width:0}
+.grow{flex:1 1 auto}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.step{display:flex;gap:10px;align-items:baseline}
+.step b{font-family:var(--font-display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.over{border-color:var(--accent);border-style:dashed}
+.msg{border-radius:8px;padding:9px 12px;font-size:14px}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}.msg.warn{background:var(--warn-bg);color:var(--warn)}.msg.bad{background:var(--bad-bg);color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;background:var(--soft);border-radius:999px;padding:2px 11px;overflow-wrap:anywhere}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.opts{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center}
+.opts label{display:flex;gap:6px;align-items:center;font-size:14px}
+.opts input[type=number]{width:84px}
+.tbl{overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{position:sticky;top:0;background:var(--surface);text-align:left;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:6px 10px;border-top:1px solid var(--line);vertical-align:middle}
+td input{width:100%;min-width:90px}
+td.id input{font-family:var(--font-mono);min-width:110px}
+td.slug{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.links{display:flex;flex-direction:column;gap:10px}
+.lk{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.lk .u{font-family:var(--font-mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details>summary{cursor:pointer;color:var(--accent);font-weight:500;font-size:14px;width:fit-content}
+pre{margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.45 var(--font-mono);max-height:260px;overflow:auto}
+ol.how{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+code{font-family:var(--font-mono);font-size:12.5px;background:var(--soft);padding:1px 5px;border-radius:4px}
+@media (max-width:480px){body{padding-block:22px 48px}.panel{padding:12px}}
+
+.keybar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.out{display:flex;flex-direction:column;gap:10px}
+.big{font-size:16px;padding:10px 18px}
+.top{display:flex;align-items:flex-start;gap:12px}.top header{flex:1 1 auto;min-width:0}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(10,15,14,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.grp{display:flex;flex-direction:column;gap:8px}.grp h3{margin:0;font-family:var(--font-display);font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><header>
+    <h1>Company Link Builder</h1>
+    <p class="lede">Paste your LinkedIn company links. Claude finds each company's ID and you get Sales Navigator links back, for both current and past company.</p>
+  </header><button type="button" id="gear" aria-label="Settings">Settings</button></div>
+  <section class="panel">
+    <textarea id="list" rows="8" aria-label="Company list" placeholder="https://www.linkedin.com/company/markforged&#10;https://www.linkedin.com/company/formlabs&#10;https://www.linkedin.com/company/berkshire-grey"></textarea>
+    <div class="row">
+      <button type="button" class="primary big" id="go">Get Sales Navigator link</button>
+      <button type="button" id="pick">Upload file</button>
+      <input type="file" id="file" accept=".txt,.csv,.tsv,.xlsx,.xls,.xlsm,.ods,text/plain" multiple hidden>
+      <span class="grow"></span>
+      <button type="button" class="link" id="clear">Clear</button>
+    </div>
+    <div id="status" aria-live="polite"></div>
+    <div class="out" id="out"></div>
+  </section>
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-label="Settings"><div class="sheet">
+    <div class="row"><h2 class="grow">Settings</h2><button type="button" id="mclose">Done</button></div>
+    <div class="field"><label for="key" class="small muted">Your Claude API key. It stays in this browser and goes only to Anthropic.</label>
+      <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" style="width:100%"></div>
+    <div class="opts"><label>Model <input type="text" id="model" style="width:200px"></label>
+      <label>Companies per link <input type="number" id="chunk" min="1" max="200"></label></div>
+    <div class="opts">
+      <label><input type="checkbox" id="nameonly"> If no ID is found, add the company by name only</label>
+    </div>
+    <div class="row small"><span>ID book: <strong id="bookcount">0 saved</strong>. IDs are saved here after the first lookup, so Claude is only asked about new companies.</span><span class="grow"></span><button type="button" id="bexp">Export</button><button type="button" id="bimp">Import</button><input type="file" id="bfile" accept=".json,application/json" hidden><button type="button" class="danger" id="bclr">Clear</button></div>
+    <label class="small muted" for="tpl">Optional: paste a Sales Navigator search to keep its other filters (location, titles, experience). Only the companies are swapped.</label>
+    <textarea id="tpl" rows="3" placeholder="https://www.linkedin.com/sales/search/people#query=..."></textarea>
+    <div id="tplinfo" aria-live="polite"></div>
+  </div></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function dec(s){try{return decodeURIComponent(s)}catch(e){return s}}
+function nz(s){return String(s==null?'':s).toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'')}
+var STORE='sn-company-links-v2',DEFAULT_PREFIX='https://www.linkedin.com/sales/search/people#';
+try{localStorage.removeItem('sn-company-links-v1')}catch(e){}
+var S={key:'',model:'claude-sonnet-5-5',chunk:30,nameonly:true,tpl:'',book:{}};
+var tplObj=null,busy=false;
+function save(){try{localStorage.setItem(STORE,JSON.stringify(S))}catch(e){}}
+try{var d=JSON.parse(localStorage.getItem(STORE)||'null');if(d)for(var k in S)if(d[k]!=null)S[k]=d[k]}catch(e){}
+function parseTree(src){
+  var i=0;
+  function value(){
+    if(src.indexOf('List(',i)===i){i+=5;var a=[];if(src[i]===')'){i++;return a}
+      for(;;){a.push(value());if(src[i]===','){i++;continue}if(src[i]===')'){i++;break}throw new Error('Unexpected text at '+i)}return a}
+    if(src[i]==='('){i++;var o={};if(src[i]===')'){i++;return o}
+      for(;;){var k=key();o[k]=value();if(src[i]===','){i++;continue}if(src[i]===')'){i++;break}throw new Error('Unexpected text at '+i)}return o}
+    return scalar();
+  }
+  function key(){var s=i;while(i<src.length&&src[i]!==':')i++;if(i>=src.length)throw new Error('Missing ":"');var k=src.slice(s,i);i++;return k}
+  function scalar(){var s=i;while(i<src.length&&src[i]!==','&&src[i]!==')')i++;return dec(src.slice(s,i))}
+  var v=value();if(i!==src.length)throw new Error('Extra text at the end');return v;
+}
+function encScalar(v){return encodeURIComponent(v).replace(/[!'()*]/g,function(c){return '%'+c.charCodeAt(0).toString(16).toUpperCase()})}
+function ser(v){
+  if(Array.isArray(v))return 'List('+v.map(ser).join(',')+')';
+  if(v&&typeof v==='object')return '('+Object.keys(v).map(function(k){return k+':'+ser(v[k])}).join(',')+')';
+  return encScalar(String(v));
+}
+function encodeQuery(t){return encodeURIComponent(ser(t)).replace(/%28/g,'(').replace(/%29/g,')')}
+function readTemplate(url){
+  url=url.trim();
+  var m=/^(.*?[?#&])query=([^&]*)/.exec(url);
+  if(!m)throw new Error('No search found in that link (it needs query= in it).');
+  var tree=parseTree(dec(m[2]));
+  if(!tree||typeof tree!=='object'||Array.isArray(tree))throw new Error('That link did not decode to a search.');
+  if(!Array.isArray(tree.filters))tree.filters=[];
+  return {prefix:m[1],tree:tree};
+}
+
+function orgIdOf(v){var m=/organization:(\d+)/.exec(v&&v.id||'');return m?m[1]:''}
+function pretty(slug){return slug.replace(/[-_]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase()}).trim()}
+function parseCompanies(text){
+  var out=[],lines=String(text||'').split(/\r?\n/);
+  lines.forEach(function(line){
+    line=line.trim();if(!line)return;
+    var ids=[],slug='',name='',m;
+    var cc=/currentCompany=([^&\s]+)/i.exec(line);
+    if(cc){var raw=dec(cc[1]);(raw.match(/\d{2,}/g)||[]).forEach(function(i){ids.push(i)})}
+    if(!cc&&(m=/linkedin\.com\/sales\/(?:company|account)\/(\d+)/i.exec(line)))ids.push(m[1]);
+    if(!ids.length&&(m=/linkedin\.com\/company\/([^\/?#\s,"']+)/i.exec(line))){
+      var seg=dec(m[1]);if(/^\d+$/.test(seg))ids.push(seg);else slug=seg.toLowerCase();
+    }
+    var rest=line.replace(/https?:\/\/\S+|(?:www\.)?linkedin\.com\/\S+/gi,' ');
+    var parts=rest.split(/[,\t|;]+/).map(function(x){return x.trim()}).filter(Boolean);
+    parts.forEach(function(p){if(/^\d{3,}$/.test(p)&&!ids.length)ids.push(p);else if(!/^\d+$/.test(p)&&!name)name=p});
+    if(!ids.length&&!slug&&name){slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}
+    if(ids.length){ids.forEach(function(id){out.push({id:id,slug:slug,name:name})})}
+    else if(slug)out.push({id:'',slug:slug,name:name});
+  });
+  return out;
+}
+
+/* ID book: remembers every ID found so Claude is only asked about companies it has not seen. */
+function bookGet(slug,name){
+  var ks=[nz(slug),nz(name)].filter(Boolean),i;
+  for(i=0;i<ks.length;i++)if(S.book[ks[i]])return S.book[ks[i]];
+  for(i=0;i<ks.length;i++){var k=ks[i];if(k.length<4)continue;
+    var c=Object.keys(S.book).filter(function(b){return b.length>=4&&(b.indexOf(k)===0||k.indexOf(b)===0)});
+    var ids={};c.forEach(function(b){ids[S.book[b].id]=S.book[b]});var u=Object.keys(ids);
+    if(u.length===1)return ids[u[0]];}
+  return null;
+}
+function bookPut(id,name,slug){
+  if(!/^\d{2,}$/.test(String(id)))return;
+  var e={id:String(id),name:name||pretty(slug||id)};
+  [slug,name].forEach(function(x){var k=nz(x);if(k)S.book[k]=e});
+  save();renderBook();
+}
+function renderBook(){var n=Object.keys(S.book).reduce(function(a,k){a[S.book[k].id]=1;return a},{});$('bookcount').textContent=Object.keys(n).length+' saved'}
+/* Template companies also teach the book. */
+function tplLookup(slug,name){
+  if(!tplObj)return null;var ns=nz(slug||name),hit=null;if(!ns)return null;
+  tplObj.tree.filters.forEach(function(f){if(f.type!=='CURRENT_COMPANY'&&f.type!=='PAST_COMPANY')return;
+    (f.values||[]).forEach(function(v){var id=orgIdOf(v),n=nz(v.text);if(!id||hit)return;
+      if(n===ns||(ns.length>=4&&n.indexOf(ns)===0)||(n.length>=4&&ns.indexOf(n)===0))hit={id:id,name:v.text}})});
+  return hit;
+}
+/* Claude looks the ID up on the web. It must quote where it saw it. */
+function askClaude(c,attempt){
+  attempt=attempt||0;
+  var who=c.name&&nz(c.name)!==nz(c.slug)?c.name+' (page: linkedin.com/company/'+c.slug+')':'linkedin.com/company/'+c.slug;
+  var prompt='Find the numeric LinkedIn organization ID of this company: '+who+'.\nUse web search. The ID is the number in places like linkedin.com/sales/company/<id>, currentCompany=%5B%22<id>%22%5D, urn:li:organization:<id>, urn:li:fsd_company:<id> or a "companyId" field. Only return an ID you actually saw in a search result or page. Never guess and never answer from memory. If you did not see one, return null.\nReply with ONLY this JSON: {"id":"digits or null","name":"official company name","evidence":"the URL or text where you saw the ID"}';
+  return fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':S.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:S.model,max_tokens:1500,tools:[{type:'web_search_20250305',name:'web_search',max_uses:5}],messages:[{role:'user',content:prompt}]})
+  }).then(function(r){
+    if(r.status===429||r.status>=500){if(attempt<2)return new Promise(function(ok){setTimeout(ok,1500*(attempt+1))}).then(function(){return askClaude(c,attempt+1)});throw new Error('Claude is busy. Try again in a minute.')}
+    return r.json().then(function(j){
+      if(!r.ok){var m=j&&j.error&&j.error.message||('Error '+r.status);var e=new Error(r.status===401?'That API key was not accepted.':m);e.fatal=r.status===401||r.status===400;throw e}
+      var text=(j.content||[]).filter(function(b){return b.type==='text'}).map(function(b){return b.text}).join('\n');
+      var m=/\{[\s\S]*\}/.exec(text);if(!m)return {id:'',name:''};
+      try{var o=JSON.parse(m[0]);var id=String(o.id==null?'':o.id).replace(/\D/g,'');
+        // the quoted evidence must actually contain the number, otherwise treat as a guess
+        if(id.length<2||String(o.evidence||'').indexOf(id)<0)id='';
+        return {id:id,name:o.name||''}}catch(e){return {id:'',name:''}}
+    });
+  });
+}
+function mapPool(items,n,fn){
+  var i=0,res=new Array(items.length);
+  return new Promise(function(done,fail){
+    var active=0,fin=0,dead=false;
+    if(!items.length)return done(res);
+    function next(){
+      while(active<n&&i<items.length&&!dead){(function(k){active++;fn(items[k],k).then(function(v){res[k]=v},function(e){if(e&&e.fatal){dead=true;fail(e)}else res[k]=null}).then(function(){active--;fin++;if(fin===items.length&&!dead)done(res);else next()})})(i++)}
+    }
+    next();
+  });
+}
+function readTemplate(url){
+  var m=/^(.*?[?#&])query=([^&]*)/.exec(url.trim());
+  if(!m)throw new Error('No search found in that link.');
+  var tree=parseTree(dec(m[2]));
+  if(!tree||typeof tree!=='object'||Array.isArray(tree))throw new Error('That link did not decode to a search.');
+  if(!Array.isArray(tree.filters))tree.filters=[];
+  return {prefix:m[1],tree:tree};
+}
+function setTemplate(){
+  var v=$('tpl').value.trim();tplObj=null;$('tplinfo').innerHTML='';
+  if(v){try{tplObj=readTemplate(v);tplObj.tree.filters.forEach(function(f){if(f.type==='CURRENT_COMPANY'||f.type==='PAST_COMPANY')(f.values||[]).forEach(function(x){var id=orgIdOf(x);if(id)bookPut(id,x.text,'')})});$('tplinfo').innerHTML='<div class="msg ok">Template read. Its other filters will be kept.</div>'}catch(e){$('tplinfo').innerHTML='<div class="msg bad">'+esc(e.message)+'</div>'}}
+  S.tpl=v;save();
+}
+function buildLinks(rows,type){
+  var n=Math.max(1,Math.min(200,+S.chunk||30)),out=[];
+  for(var i=0;i<rows.length;i+=n){
+    var grp=rows.slice(i,i+n),t;
+    if(tplObj){t=JSON.parse(JSON.stringify(tplObj.tree));delete t.recentSearchParam}else t={filters:[]};
+    var vals=grp.map(function(r){return r.id?{id:'urn:li:organization:'+r.id,text:r.name,selectionType:'INCLUDED',parent:{id:'0'}}:{text:r.name,selectionType:'INCLUDED'}});
+    var other=type==='CURRENT_COMPANY'?'PAST_COMPANY':'CURRENT_COMPANY';
+    t.filters=t.filters.filter(function(f){return f.type!==other});
+    var idx=-1;t.filters.forEach(function(f,k){if(f.type===type&&idx<0)idx=k});
+    if(idx>=0)t.filters[idx].values=vals;else t.filters.unshift({type:type,values:vals});
+    out.push({n:grp.length,url:(tplObj?tplObj.prefix:DEFAULT_PREFIX)+'query='+encodeQuery(t)});
+  }
+  return out;
+}
+function copyText(text,btn){
+  var ok=function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o},1500)};
+  var fb=function(){var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');ok()}catch(e){btn.textContent='Copy blocked'}t.remove()};
+  try{navigator.clipboard.writeText(text).then(ok,fb)}catch(e){fb()}
+}
+var lastLinks=[];
+function showLinks(sets,notes){
+  lastLinks=[];var h='';
+  sets.forEach(function(s){
+    h+='<div class="grp"><h3>'+s.label+'</h3>'+s.links.map(function(l,i){var g=lastLinks.push(l.url)-1;
+      return '<div class="lk"><div class="row"><strong>'+(s.links.length>1?'Link '+(i+1)+' · ':'')+l.n+' compan'+(l.n===1?'y':'ies')+'</strong><span class="grow"></span><button type="button" class="primary" data-copy="'+g+'">Copy link</button><a class="btn" href="'+esc(l.url)+'" target="_blank" rel="noopener noreferrer">Open</a></div><div class="u">'+esc(l.url)+'</div></div>'}).join('')+'</div>';
+  });
+  $('out').innerHTML=h;
+  $('status').innerHTML=notes.map(function(n){return '<div class="msg '+n.k+'" style="margin-top:6px">'+esc(n.t)+'</div>'}).join('');
+}
+function openSettings(){$('modal').hidden=false;$('mclose').focus()}
+function closeSettings(){$('modal').hidden=true;$('gear').focus()}
+function go(){
+  if(busy)return;
+  var list=parseCompanies($('list').value);
+  if(!list.length){$('status').innerHTML='<div class="msg warn">Paste at least one company link first.</div>';return}
+  // de-duplicate
+  var seen={},rows=[];list.forEach(function(c){var k=c.id||nz(c.slug||c.name);if(seen[k])return;seen[k]=1;
+    var r={id:c.id,slug:c.slug,name:c.name||pretty(c.slug||c.id)};
+    if(r.id)bookPut(r.id,c.name,c.slug);
+    if(!r.id){var t=tplLookup(c.slug,c.name)||bookGet(c.slug,c.name);if(t){r.id=t.id;r.name=t.name}}
+    rows.push(r)});
+  var need=rows.filter(function(r){return !r.id});
+  var notes=[];
+  function finish(){
+    var use=rows.filter(function(r){return r.id||S.nameonly}),skipped=rows.length-use.length;
+    var nameOnly=use.filter(function(r){return !r.id}).length;
+    if(nameOnly)notes.push({k:'warn',t:nameOnly+' compan'+(nameOnly===1?'y':'ies')+' had no ID found and '+(nameOnly===1?'was':'were')+' added by name only. If the link ignores '+(nameOnly===1?'it':'them')+', find the ID by hand.'});
+    if(skipped)notes.push({k:'warn',t:skipped+' left out because no ID was found.'});
+    busy=false;$('go').disabled=false;
+    if(!use.length){$('out').innerHTML='';$('status').innerHTML=notes.map(function(n){return '<div class="msg '+n.k+'">'+esc(n.t)+'</div>'}).join('');return}
+    showLinks([{label:'Current company',links:buildLinks(use,'CURRENT_COMPANY')},{label:'Past company',links:buildLinks(use,'PAST_COMPANY')}],notes);
+  }
+  busy=true;$('go').disabled=true;$('out').innerHTML='';
+  if(!need.length)return finish();
+  if(!S.key){busy=false;$('go').disabled=false;openSettings();$('status').innerHTML='<div class="msg warn">Add your Claude API key in Settings so Claude can find the IDs.</div>';$('key').focus();return}
+  var done=0;$('status').innerHTML='<div class="msg">Finding IDs: 0 of '+need.length+'</div>';
+  mapPool(need,3,function(r){return askClaude(r).then(function(a){done++;$('status').innerHTML='<div class="msg">Finding IDs: '+done+' of '+need.length+'</div>';if(a&&a.id){r.id=a.id;if(a.name)r.name=a.name;bookPut(a.id,r.name,r.slug)}return a})})
+   .then(finish,function(e){busy=false;$('go').disabled=false;$('status').innerHTML='<div class="msg bad">'+esc(e.message)+'</div>'});
+}
+function readFiles(files,cb){
+  files=Array.prototype.slice.call(files||[]);if(!files.length)return;
+  var all='',left=files.length;
+  files.forEach(function(f){var fr=new FileReader(),sheet=/\.(xlsx|xls|xlsm|ods)$/i.test(f.name);
+    fr.onload=function(){try{
+      if(sheet){var wb=XLSX.read(new Uint8Array(fr.result),{type:'array'});
+        wb.SheetNames.forEach(function(sn){var ws=wb.Sheets[sn];
+          XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}).forEach(function(r){all+='\n'+r.map(function(c){return String(c).trim()}).filter(Boolean).join(', ')});
+          Object.keys(ws).forEach(function(a){if(a[0]!=='!'&&ws[a].l&&ws[a].l.Target&&/linkedin\.com/i.test(ws[a].l.Target))all+='\n'+ws[a].l.Target})})
+      }else all+='\n'+fr.result}catch(e){}
+      if(--left===0)cb(all)};
+    fr.onerror=function(){if(--left===0)cb(all)};
+    if(sheet)fr.readAsArrayBuffer(f);else fr.readAsText(f)});
+}
+$('go').addEventListener('click',go);
+$('clear').addEventListener('click',function(){$('list').value='';$('out').innerHTML='';$('status').innerHTML=''});
+$('pick').addEventListener('click',function(){$('file').click()});
+$('file').addEventListener('change',function(e){readFiles(e.target.files,function(all){var t=$('list').value.trim();$('list').value=(t?t+'\n':'')+all.trim()});e.target.value=''});
+$('out').addEventListener('click',function(e){var b=e.target.closest('[data-copy]');if(b)copyText(lastLinks[+b.getAttribute('data-copy')],b)});
+$('key').addEventListener('input',function(e){S.key=e.target.value.trim();save()});
+$('model').addEventListener('input',function(e){S.model=e.target.value.trim()||'claude-sonnet-5-5';save()});
+$('chunk').addEventListener('change',function(e){S.chunk=Math.max(1,Math.min(200,+e.target.value||30));save()});
+$('nameonly').addEventListener('change',function(e){S.nameonly=e.target.checked;save()});
+$('gear').addEventListener('click',openSettings);$('mclose').addEventListener('click',closeSettings);
+$('modal').addEventListener('click',function(e){if(e.target===$('modal'))closeSettings()});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('modal').hidden)closeSettings()});
+$('bexp').addEventListener('click',function(){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S.book,null,1)],{type:'application/json'}));a.download='company-id-book.json';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)});
+$('bimp').addEventListener('click',function(){$('bfile').click()});
+$('bfile').addEventListener('change',function(e){var f=e.target.files[0];if(!f)return;var fr=new FileReader();fr.onload=function(){try{var o=JSON.parse(fr.result);Object.keys(o).forEach(function(k){if(o[k]&&/^\d{2,}$/.test(String(o[k].id)))S.book[k]={id:String(o[k].id),name:o[k].name||k}});save();renderBook()}catch(x){$('status').innerHTML='<div class="msg bad">That file is not an ID book.</div>'}};fr.readAsText(f);e.target.value=''});
+var armed=false;$('bclr').addEventListener('click',function(){var b=$('bclr');if(!armed){armed=true;b.textContent='Sure? Clear';setTimeout(function(){armed=false;b.textContent='Clear'},4000);return}armed=false;S.book={};save();renderBook();b.textContent='Clear'});
+var tt;$('tpl').addEventListener('input',function(){clearTimeout(tt);tt=setTimeout(setTemplate,300)});
+$('key').value=S.key;$('model').value=S.model;$('chunk').value=S.chunk;$('nameonly').checked=!!S.nameonly;$('tpl').value=S.tpl;
+renderBook();
+if(S.tpl)setTemplate();
+window.addEventListener('pagehide',save);
+})();
+</script>
+</body>
+</html>
