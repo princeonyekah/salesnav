@@ -79,6 +79,12 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--soft);paddin
 .top{display:flex;align-items:flex-start;gap:12px}.top header{flex:1 1 auto;min-width:0}
 .modal{position:fixed;inset:0;z-index:50;background:rgba(10,15,14,.55);display:flex;align-items:center;justify-content:center;padding:16px}
 .sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.lib-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--bg);min-width:0}
+.card h3{margin:0;font-size:15px;overflow-wrap:anywhere}
+.card .meta{font-size:12.5px;color:var(--muted)}
+.edit{display:flex;flex-direction:column;gap:8px}.edit input,.edit textarea{width:100%;font-family:var(--font-body);font-size:14px}
+.banner{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .grp{display:flex;flex-direction:column;gap:8px}.grp h3{margin:0;font-family:var(--font-display);font-size:15px}
 </style>
 </head>
@@ -90,6 +96,8 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--soft);paddin
   </header><button type="button" id="gear" aria-label="Settings">Settings</button></div>
   <section class="panel">
     <textarea id="list" rows="8" aria-label="Company list" placeholder="https://www.linkedin.com/company/markforged&#10;https://www.linkedin.com/company/formlabs&#10;https://www.linkedin.com/company/berkshire-grey"></textarea>
+    <div class="banner" id="banner" hidden><span class="chip warn" id="bantxt"></span><button type="button" class="link" id="bancancel">Start a new search instead</button></div>
+    <div class="row"><input type="text" id="sname" placeholder="Name (optional)" aria-label="Name" style="flex:1 1 180px"><input type="text" id="sfolder" list="folders" placeholder="Folder (optional)" aria-label="Folder" style="flex:1 1 160px"><datalist id="folders"></datalist></div>
     <div class="row">
       <button type="button" class="primary big" id="go">Get Sales Navigator link</button>
       <button type="button" id="pick">Upload file</button>
@@ -99,6 +107,10 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--soft);paddin
     </div>
     <div id="status" aria-live="polite"></div>
     <div class="out" id="out"></div>
+  </section>
+  <section class="panel" id="lib" aria-label="Saved links">
+    <div class="lib-h"><h2 class="grow">Saved links <span class="muted small" id="libcount"></span></h2><select id="lfolder" aria-label="Folder filter"></select><input type="search" id="lq" placeholder="Search" aria-label="Search saved links" style="width:150px"><button type="button" id="lexp">Export CSV</button></div>
+    <div id="liblist" class="out"></div><div id="libpager" class="row"></div>
   </section>
   <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-label="Settings"><div class="sheet">
     <div class="row"><h2 class="grow">Settings</h2><button type="button" id="mclose">Done</button></div>
@@ -125,8 +137,8 @@ function dec(s){try{return decodeURIComponent(s)}catch(e){return s}}
 function nz(s){return String(s==null?'':s).toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'')}
 var STORE='sn-company-links-v2',DEFAULT_PREFIX='https://www.linkedin.com/sales/search/people#';
 try{localStorage.removeItem('sn-company-links-v1')}catch(e){}
-var S={key:'',model:'claude-sonnet-5-5',chunk:30,nameonly:true,tpl:'',book:{}};
-var tplObj=null,busy=false;
+var S={key:'',model:'claude-sonnet-5-5',chunk:30,nameonly:true,tpl:'',book:{},saved:[]};
+var tplObj=null,busy=false,editing=null,lib={folder:'',q:'',page:1,open:{},edit:null,del:null};var PER=7;
 function save(){try{localStorage.setItem(STORE,JSON.stringify(S))}catch(e){}}
 try{var d=JSON.parse(localStorage.getItem(STORE)||'null');if(d)for(var k in S)if(d[k]!=null)S[k]=d[k]}catch(e){}
 function parseTree(src){
@@ -283,6 +295,52 @@ function showLinks(sets,notes){
 }
 function openSettings(){$('modal').hidden=false;$('mclose').focus()}
 function closeSettings(){$('modal').hidden=true;$('gear').focus()}
+function stamp(ts){var d=new Date(ts);return d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+function sid(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function persistSet(rows,cur,pas){
+  var now=Date.now(),nm=$('sname').value.trim(),fo=$('sfolder').value.trim();
+  var rec={companies:rows.map(function(r){return {id:r.id||'',name:r.name,slug:r.slug||''}}),current:cur.map(function(l){return l.url}),past:pas.map(function(l){return l.url}),template:!!tplObj};
+  var e=editing&&S.saved.filter(function(x){return x.id===editing})[0];
+  if(e){for(var k in rec)e[k]=rec[k];if(nm)e.name=nm;e.folder=fo;e.updated=now}
+  else{S.saved.unshift({id:sid(),name:nm||('Search · '+rows.length+' compan'+(rows.length===1?'y':'ies')),folder:fo,notes:'',created:now,updated:now,current:rec.current,past:rec.past,companies:rec.companies,template:rec.template});}
+  var wasEditing=!!e;editing=null;$('banner').hidden=true;$('sname').value='';
+  lib.page=1;save();renderLib();
+  if(wasEditing)$('status').insertAdjacentHTML('beforeend','<div class="msg ok" style="margin-top:6px">Saved link updated.</div>');
+}
+function folders(){var m={};S.saved.forEach(function(s){if(s.folder)m[s.folder]=1});return Object.keys(m).sort()}
+function renderLib(){
+  var fs=folders();
+  $('folders').innerHTML=fs.map(function(f){return '<option value="'+esc(f)+'">'}).join('');
+  var sel=$('lfolder');sel.innerHTML='<option value="">All folders</option><option value="__none">No folder</option>'+fs.map(function(f){return '<option value="'+esc(f)+'">'+esc(f)+'</option>'}).join('');
+  if(lib.folder&&lib.folder!=='__none'&&fs.indexOf(lib.folder)<0)lib.folder='';
+  sel.value=lib.folder;
+  var q=lib.q.toLowerCase();
+  var list=S.saved.filter(function(s){
+    if(lib.folder==='__none'&&s.folder)return false;if(lib.folder&&lib.folder!=='__none'&&s.folder!==lib.folder)return false;
+    if(q){var hay=(s.name+' '+s.folder+' '+s.notes+' '+s.companies.map(function(c){return c.name}).join(' ')).toLowerCase();if(hay.indexOf(q)<0)return false}
+    return true});
+  $('libcount').textContent='('+list.length+(list.length!==S.saved.length?' of '+S.saved.length:'')+')';
+  $('lexp').disabled=!S.saved.length;
+  var pages=Math.max(1,Math.ceil(list.length/PER));if(lib.page>pages)lib.page=pages;
+  var slice=list.slice((lib.page-1)*PER,lib.page*PER);
+  $('liblist').innerHTML=slice.length?slice.map(cardHTML).join(''):'<p class="hint">'+(S.saved.length?'Nothing matches.':'Links you create are saved here automatically.')+'</p>';
+  $('libpager').innerHTML=pages>1?'<button type="button" data-pg="-1"'+(lib.page<=1?' disabled':'')+'>Previous</button><span class="small muted">Page '+lib.page+' of '+pages+'</span><button type="button" data-pg="1"'+(lib.page>=pages?' disabled':'')+'>Next</button>':'';
+}
+function linkRows(label,urls,s,kind){
+  return '<div class="grp"><h3>'+label+'</h3>'+urls.map(function(u,i){return '<div class="lk"><div class="row"><strong>'+(urls.length>1?'Link '+(i+1):'Link')+'</strong><span class="grow"></span><button type="button" class="primary" data-lcopy="'+s.id+'|'+kind+'|'+i+'">Copy link</button><a class="btn" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">Open</a></div><div class="u">'+esc(u)+'</div></div>'}).join('')+'</div>';
+}
+function cardHTML(s){
+  var h='<div class="card" data-sid="'+s.id+'">';
+  if(lib.edit===s.id){
+    h+='<div class="edit"><input type="text" data-e="name" value="'+esc(s.name)+'" aria-label="Name"><input type="text" data-e="folder" list="folders" value="'+esc(s.folder)+'" placeholder="Folder" aria-label="Folder"><textarea data-e="notes" rows="2" placeholder="Notes" aria-label="Notes">'+esc(s.notes)+'</textarea><div class="row"><button type="button" class="primary" data-act="saveedit">Save</button><button type="button" data-act="canceledit">Cancel</button></div></div>';
+  }else{
+    h+='<div class="row"><h3 class="grow">'+esc(s.name)+'</h3>'+(s.folder?'<span class="chip">'+esc(s.folder)+'</span>':'')+'</div><div class="meta">'+s.companies.length+' compan'+(s.companies.length===1?'y':'ies')+' · '+stamp(s.updated)+(s.template?' · with template':'')+'</div>'+(s.notes?'<div class="small">'+esc(s.notes)+'</div>':'');
+    h+='<div class="row"><button type="button" class="primary" data-act="toggle">'+(lib.open[s.id]?'Hide links':'Show links')+'</button><button type="button" data-act="edit">Edit details</button><button type="button" data-act="load">Edit companies</button><span class="grow"></span><button type="button" class="danger'+(lib.del===s.id?' arm':'')+'" data-act="del">'+(lib.del===s.id?'Sure? Delete':'Delete')+'</button></div>';
+    if(lib.open[s.id])h+=linkRows('Current company',s.current,s,'c')+linkRows('Past company',s.past,s,'p')+'<details><summary>Companies</summary><pre>'+esc(s.companies.map(function(c){return c.name+(c.id?'  ('+c.id+')':'  (by name)')}).join('\n'))+'</pre></details>';
+  }
+  return h+'</div>';
+}
+var lastRows=[];
 function go(){
   if(busy)return;
   var list=parseCompanies($('list').value);
@@ -302,7 +360,9 @@ function go(){
     if(skipped)notes.push({k:'warn',t:skipped+' left out because no ID was found.'});
     busy=false;$('go').disabled=false;
     if(!use.length){$('out').innerHTML='';$('status').innerHTML=notes.map(function(n){return '<div class="msg '+n.k+'">'+esc(n.t)+'</div>'}).join('');return}
-    showLinks([{label:'Current company',links:buildLinks(use,'CURRENT_COMPANY')},{label:'Past company',links:buildLinks(use,'PAST_COMPANY')}],notes);
+    var cur=buildLinks(use,'CURRENT_COMPANY'),pas=buildLinks(use,'PAST_COMPANY');
+    showLinks([{label:'Current company',links:cur},{label:'Past company',links:pas}],notes);
+    persistSet(use,cur,pas);
   }
   busy=true;$('go').disabled=true;$('out').innerHTML='';
   if(!need.length)return finish();
@@ -334,6 +394,31 @@ $('key').addEventListener('input',function(e){S.key=e.target.value.trim();save()
 $('model').addEventListener('input',function(e){S.model=e.target.value.trim()||'claude-sonnet-5-5';save()});
 $('chunk').addEventListener('change',function(e){S.chunk=Math.max(1,Math.min(200,+e.target.value||30));save()});
 $('nameonly').addEventListener('change',function(e){S.nameonly=e.target.checked;save()});
+$('liblist').addEventListener('click',function(e){
+  var c=e.target.closest('.card'),b=e.target.closest('button');if(!c||!b)return;
+  var s=S.saved.filter(function(x){return x.id===c.getAttribute('data-sid')})[0];
+  if(b.hasAttribute('data-lcopy')){var p=b.getAttribute('data-lcopy').split('|');var u=(p[1]==='c'?s.current:s.past)[+p[2]];copyText(u,b);return}
+  if(!s)return;var a=b.getAttribute('data-act');
+  if(a==='toggle'){lib.open[s.id]=!lib.open[s.id]}
+  else if(a==='edit'){lib.edit=s.id}
+  else if(a==='canceledit'){lib.edit=null}
+  else if(a==='saveedit'){s.name=c.querySelector('[data-e=name]').value.trim()||s.name;s.folder=c.querySelector('[data-e=folder]').value.trim();s.notes=c.querySelector('[data-e=notes]').value.trim();s.updated=Date.now();lib.edit=null;save()}
+  else if(a==='load'){
+    $('list').value=s.companies.map(function(r){return r.slug?'https://www.linkedin.com/company/'+r.slug+(r.id?', '+r.id:''):r.name+(r.id?', '+r.id:'')}).join('\n');
+    $('sname').value=s.name;$('sfolder').value=s.folder;editing=s.id;$('bantxt').textContent='Editing "'+s.name+'". Get link will update it.';$('banner').hidden=false;
+    $('out').innerHTML='';$('status').innerHTML='';window.scrollTo({top:0,behavior:'smooth'});$('list').focus();return}
+  else if(a==='del'){if(lib.del!==s.id){lib.del=s.id;setTimeout(function(){if(lib.del===s.id){lib.del=null;renderLib()}},4000)}else{S.saved=S.saved.filter(function(x){return x.id!==s.id});lib.del=null;if(editing===s.id){editing=null;$('banner').hidden=true}save()}}
+  renderLib();
+});
+$('libpager').addEventListener('click',function(e){var b=e.target.closest('[data-pg]');if(!b)return;lib.page+=+b.getAttribute('data-pg');renderLib()});
+$('lfolder').addEventListener('change',function(e){lib.folder=e.target.value;lib.page=1;renderLib()});
+$('lq').addEventListener('input',function(e){lib.q=e.target.value;lib.page=1;renderLib()});
+$('bancancel').addEventListener('click',function(){editing=null;$('banner').hidden=true;$('sname').value='';$('sfolder').value=''});
+$('lexp').addEventListener('click',function(){
+  function cc(v){v=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'}
+  var rows=[['Name','Folder','Notes','Saved','Companies','Type','Link']];
+  S.saved.forEach(function(s){s.current.forEach(function(u){rows.push([s.name,s.folder,s.notes,new Date(s.updated).toISOString(),s.companies.map(function(c){return c.name}).join('; '),'Current company',u])});s.past.forEach(function(u){rows.push([s.name,s.folder,s.notes,new Date(s.updated).toISOString(),s.companies.map(function(c){return c.name}).join('; '),'Past company',u])})});
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(function(r){return r.map(cc).join(',')}).join('\r\n')],{type:'text/csv;charset=utf-8'}));a.download='saved-sales-nav-links.csv';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500)});
 $('gear').addEventListener('click',openSettings);$('mclose').addEventListener('click',closeSettings);
 $('modal').addEventListener('click',function(e){if(e.target===$('modal'))closeSettings()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('modal').hidden)closeSettings()});
@@ -343,7 +428,7 @@ $('bfile').addEventListener('change',function(e){var f=e.target.files[0];if(!f)r
 var armed=false;$('bclr').addEventListener('click',function(){var b=$('bclr');if(!armed){armed=true;b.textContent='Sure? Clear';setTimeout(function(){armed=false;b.textContent='Clear'},4000);return}armed=false;S.book={};save();renderBook();b.textContent='Clear'});
 var tt;$('tpl').addEventListener('input',function(){clearTimeout(tt);tt=setTimeout(setTemplate,300)});
 $('key').value=S.key;$('model').value=S.model;$('chunk').value=S.chunk;$('nameonly').checked=!!S.nameonly;$('tpl').value=S.tpl;
-renderBook();
+renderBook();renderLib();
 if(S.tpl)setTemplate();
 window.addEventListener('pagehide',save);
 })();
