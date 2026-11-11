@@ -114,7 +114,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--soft);paddin
   </section>
   <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-label="Settings"><div class="sheet">
     <div class="row"><h2 class="grow">Settings</h2><button type="button" id="mclose">Done</button></div>
-    <div class="field"><label for="key" class="small muted">Your Claude API key. It stays in this browser and goes only to Anthropic.</label>
+    <div class="field"><label for="key" class="small muted">Your Claude API key. It stays in this browser and goes only to Anthropic. Leave it blank to use the key you added in Sourcing Copilot.</label>
       <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" style="width:100%"></div>
     <div class="opts"><label>Model <input type="text" id="model" style="width:200px"></label>
       <label>Companies per link <input type="number" id="chunk" min="1" max="200"></label></div>
@@ -139,6 +139,10 @@ var STORE='sn-company-links-v2',DEFAULT_PREFIX='https://www.linkedin.com/sales/s
 try{localStorage.removeItem('sn-company-links-v1')}catch(e){}
 var S={key:'',model:'claude-sonnet-5-5',chunk:30,nameonly:true,tpl:'',book:{},saved:[]};
 var tplObj=null,busy=false,editing=null,lib={folder:'',q:'',page:1,open:{},edit:null,del:null};var PER=7;
+/* When opened inside Sourcing Copilot, the key added there is used if none is set here. */
+function sharedKey(){try{return (sessionStorage.getItem('sourcing-copilot-key')||localStorage.getItem('sourcing-copilot-key')||'').trim()}catch(e){return ''}}
+var HUB=(function(){try{return window.parent!==window&&window.parent.__SC_HUB||null}catch(e){return null}})();
+function apiKey(){return HUB?HUB.getKey():(S.key||sharedKey())}
 function save(){try{localStorage.setItem(STORE,JSON.stringify(S))}catch(e){}}
 try{var d=JSON.parse(localStorage.getItem(STORE)||'null');if(d)for(var k in S)if(d[k]!=null)S[k]=d[k]}catch(e){}
 function parseTree(src){
@@ -225,7 +229,7 @@ function askClaude(c,attempt){
   var who=c.name&&nz(c.name)!==nz(c.slug)?c.name+' (page: linkedin.com/company/'+c.slug+')':'linkedin.com/company/'+c.slug;
   var prompt='Find the numeric LinkedIn organization ID of this company: '+who+'.\nUse web search. The ID is the number in places like linkedin.com/sales/company/<id>, currentCompany=%5B%22<id>%22%5D, urn:li:organization:<id>, urn:li:fsd_company:<id> or a "companyId" field. Only return an ID you actually saw in a search result or page. Never guess and never answer from memory. If you did not see one, return null.\nReply with ONLY this JSON: {"id":"digits or null","name":"official company name","evidence":"the URL or text where you saw the ID"}';
   return fetch('https://api.anthropic.com/v1/messages',{method:'POST',
-    headers:{'content-type':'application/json','x-api-key':S.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    headers:{'content-type':'application/json','x-api-key':apiKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:S.model,max_tokens:1500,tools:[{type:'web_search_20250305',name:'web_search',max_uses:5}],messages:[{role:'user',content:prompt}]})
   }).then(function(r){
     if(r.status===429||r.status>=500){if(attempt<2)return new Promise(function(ok){setTimeout(ok,1500*(attempt+1))}).then(function(){return askClaude(c,attempt+1)});throw new Error('Claude is busy. Try again in a minute.')}
@@ -274,6 +278,10 @@ function buildLinks(rows,type){
     t.filters=t.filters.filter(function(f){return f.type!==other});
     var idx=-1;t.filters.forEach(function(f,k){if(f.type===type&&idx<0)idx=k});
     if(idx>=0)t.filters[idx].values=vals;else t.filters.unshift({type:type,values:vals});
+    /* A past-company search also blocks the same companies as current employers, so only former staff remain. */
+    if(type==='PAST_COMPANY'){
+      t.filters.push({type:'CURRENT_COMPANY',values:vals.map(function(v){var c=JSON.parse(JSON.stringify(v));c.selectionType='EXCLUDED';return c})});
+    }
     out.push({n:grp.length,url:(tplObj?tplObj.prefix:DEFAULT_PREFIX)+'query='+encodeQuery(t)});
   }
   return out;
@@ -336,7 +344,7 @@ function cardHTML(s){
   }else{
     h+='<div class="row"><h3 class="grow">'+esc(s.name)+'</h3>'+(s.folder?'<span class="chip">'+esc(s.folder)+'</span>':'')+'</div><div class="meta">'+s.companies.length+' compan'+(s.companies.length===1?'y':'ies')+' · '+stamp(s.updated)+(s.template?' · with template':'')+'</div>'+(s.notes?'<div class="small">'+esc(s.notes)+'</div>':'');
     h+='<div class="row"><button type="button" class="primary" data-act="toggle">'+(lib.open[s.id]?'Hide links':'Show links')+'</button><button type="button" data-act="edit">Edit details</button><button type="button" data-act="load">Edit companies</button><span class="grow"></span><button type="button" class="danger'+(lib.del===s.id?' arm':'')+'" data-act="del">'+(lib.del===s.id?'Sure? Delete':'Delete')+'</button></div>';
-    if(lib.open[s.id])h+=linkRows('Current company',s.current,s,'c')+linkRows('Past company',s.past,s,'p')+'<details><summary>Companies</summary><pre>'+esc(s.companies.map(function(c){return c.name+(c.id?'  ('+c.id+')':'  (by name)')}).join('\n'))+'</pre></details>';
+    if(lib.open[s.id])h+=linkRows('Current company',s.current,s,'c')+linkRows('Past company (not current)',s.past,s,'p')+'<details><summary>Companies</summary><pre>'+esc(s.companies.map(function(c){return c.name+(c.id?'  ('+c.id+')':'  (by name)')}).join('\n'))+'</pre></details>';
   }
   return h+'</div>';
 }
@@ -361,12 +369,12 @@ function go(){
     busy=false;$('go').disabled=false;
     if(!use.length){$('out').innerHTML='';$('status').innerHTML=notes.map(function(n){return '<div class="msg '+n.k+'">'+esc(n.t)+'</div>'}).join('');return}
     var cur=buildLinks(use,'CURRENT_COMPANY'),pas=buildLinks(use,'PAST_COMPANY');
-    showLinks([{label:'Current company',links:cur},{label:'Past company',links:pas}],notes);
+    showLinks([{label:'Current company',links:cur},{label:'Past company (not current)',links:pas}],notes);
     persistSet(use,cur,pas);
   }
   busy=true;$('go').disabled=true;$('out').innerHTML='';
   if(!need.length)return finish();
-  if(!S.key){busy=false;$('go').disabled=false;openSettings();$('status').innerHTML='<div class="msg warn">Add your Claude API key in Settings so Claude can find the IDs.</div>';$('key').focus();return}
+  if(!apiKey()){busy=false;$('go').disabled=false;$('status').innerHTML='<div class="msg warn">Add your Claude API key so Claude can find the IDs.</div>';if(HUB)HUB.openKey();else{openSettings();$('key').focus()}return}
   var done=0;$('status').innerHTML='<div class="msg">Finding IDs: 0 of '+need.length+'</div>';
   mapPool(need,3,function(r){return askClaude(r).then(function(a){done++;$('status').innerHTML='<div class="msg">Finding IDs: '+done+' of '+need.length+'</div>';if(a&&a.id){r.id=a.id;if(a.name)r.name=a.name;bookPut(a.id,r.name,r.slug)}return a})})
    .then(finish,function(e){busy=false;$('go').disabled=false;$('status').innerHTML='<div class="msg bad">'+esc(e.message)+'</div>'});
@@ -428,6 +436,7 @@ $('bfile').addEventListener('change',function(e){var f=e.target.files[0];if(!f)r
 var armed=false;$('bclr').addEventListener('click',function(){var b=$('bclr');if(!armed){armed=true;b.textContent='Sure? Clear';setTimeout(function(){armed=false;b.textContent='Clear'},4000);return}armed=false;S.book={};save();renderBook();b.textContent='Clear'});
 var tt;$('tpl').addEventListener('input',function(){clearTimeout(tt);tt=setTimeout(setTemplate,300)});
 $('key').value=S.key;$('model').value=S.model;$('chunk').value=S.chunk;$('nameonly').checked=!!S.nameonly;$('tpl').value=S.tpl;
+if(HUB){var kf=$('key').closest('.field');if(kf)kf.hidden=true}
 renderBook();renderLib();
 if(S.tpl)setTemplate();
 window.addEventListener('pagehide',save);
